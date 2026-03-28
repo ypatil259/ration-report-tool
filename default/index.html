@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Ration Shop Sales Aggregator Default</title>
+    <!-- Using PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  margin: 20px;
+  background-color: #f5f7fa;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/* Headings */
+h1 {
+  text-align: center;
+  color: #2c3e50;
+}
+
+h2 {
+  text-align: center;
+  color: #34495e;
+  margin-top: 30px;
+  border-bottom: 2px solid #ddd;
+  padding-bottom: 5px;
+}
+
+h3 {
+  margin-top: 20px;
+  color: #2c3e50;
+  text-align: center;
+}
+
+/* Sections */
+.section {
+  margin-bottom: 25px;
+  background: #ffffff;
+  padding: 15px;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+/* Tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 15px;
+  background: white;
+}
+
+th, td {
+  border: 1px solid #e0e0e0;
+  padding: 8px;
+  text-align: center;
+}
+
+th {
+  background-color: #3498db;
+  color: white;
+  font-weight: 600;
+}
+
+/* Zebra rows */
+tbody tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+/* Hover effect */
+tbody tr:hover {
+  background-color: #eef6ff;
+}
+
+/* Totals row */
+tr[style*="font-weight: bold"] {
+  background-color: #ffeaa7 !important;
+  color: #2d3436;
+}
+
+/* Inputs */
+input[type="file"], input[type="text"] {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  margin-top: 5px;
+  width: 100%;
+}
+
+/* Buttons */
+button {
+  background-color: #27ae60;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  margin-top: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+button:hover {
+  background-color: #219150;
+}
+
+/* Print header */
+#printHeader {
+  width: 100%;
+  font-size: 1.3em;
+  text-align: center;
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 2px solid #ccc;
+}
+
+/* Print button */
+#printButton {
+  display: block;
+  margin: 10px auto;
+}
+
+/* Hide non-print elements */
+.no-print {
+  display: block;
+}
+
+/* PRINT STYLING */
+@media print {
+
+  body {
+    background: white;
+    font-size: 10pt;
+  }
+
+  .section {
+    box-shadow: none;
+    border-radius: 0;
+    padding: 5px;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  th {
+    background-color: #ddd !important;
+    color: black;
+  }
+
+  tr[style*="font-weight: bold"] {
+    background-color: #ccc !important;
+  }
+
+}
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- Static controls: will not be printed -->
+    <div class="no-print section">
+        <h1>Ration Shop Sales Aggregator Default</h1>
+        <p>Upload your CSV file (sample format below):</p>
+        <pre>
+SrcNo,RcNo,Scheme,Type,ReceiptNo,SaleDate,Wheat,Shidha,Saree,Jowar,Rice
+1,272030600735,PHH,OTP,1.96102911215363E+018,01/29/2025,2,0,0,2,6
+2,272020216974,PHH,OTP,1.96102908625227E+018,01/29/2025,3,0,0,3,9
+4,272020216985,AAY,OTP,1.96102939348871E+018,01/29/2025,8,0,0,8,19
+      </pre>
+	    <input type="file" id="csvFileInput" accept=".csv">
+
+		<p>Upload RcNo Master data CSV (RcNo,Scheme):</p>
+		<input type="file" id="referenceCsvInput" accept=".csv">
+        <!-- Section: Select columns for aggregation -->
+        <div id="aggregationOptions" class="hidden section">
+            <h3>Select columns for aggregation (sum):</h3>
+            <div id="checkboxes"></div>
+            <button id="generateReportBtn">Generate Report</button>
+        </div>
+    </div>
+
+    <!-- Report Header Section: This will print -->
+    <div class="section">
+        <input type="text" id="printHeader" placeholder="Enter report header text here">
+        <button id="printButton" class="no-print" onclick="window.print();">Print Report</button>
+    </div>
+
+    <!-- Report 1: Summary Report -->
+    <div id="report" class="section">
+        <h2>Report 1: Scheme-wise Daily Sales Summary</h2>
+        <div id="reportTable"></div>
+    </div>
+
+    <!-- Report 2: Detailed Report -->
+    <div id="detailedReport" class="section">
+        <h2>Report 2: Scheme-wise Daily Customer Details</h2>
+        <div id="detailedReportTable"></div>
+    </div>
+	
+	<div id="missingRcReport" class="section">
+    <h2>Report 3: RcNo Not Present in Sales Data</h2>
+    <div id="missingRcTable"></div>
+	</div>
+
+	<div id="extraRcReport" class="section">
+		<h2>Report 4: RcNo Present in Sales Data but NOT in Master data</h2>
+		<div id="extraRcTable"></div>
+	</div>
+</div>
+
+<script>
+    let csvData = [];
+    let headers = [];
+	let referenceData = [];
+
+    // Parse CSV file when uploaded.
+    document.getElementById("csvFileInput").addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        Papa.parse(file, {
+          header: true,
+          dynamicTyping: true,
+          complete: function(results) {
+            csvData = results.data;
+            headers = results.meta.fields;
+            showAggregationOptions();
+          },
+          error: function(error) {
+            alert("Error parsing CSV: " + error);
+          }
+        });
+      }
+    });
+	
+	document.getElementById("referenceCsvInput").addEventListener("change", function(e) {
+		const file = e.target.files[0];
+
+		if (file) {
+		Papa.parse(file, {
+			header: true,
+			dynamicTyping: true,
+			complete: function(results) {
+			referenceData = results.data;
+		}
+		});
+	}
+	});
+
+    // Build checkboxes for aggregation columns.
+    function showAggregationOptions() {
+      const excluded = ["SrcNo", "RcNo", "Scheme", "Type", "ReceiptNo", "SaleDate"];
+      const checkboxesDiv = document.getElementById("checkboxes");
+      checkboxesDiv.innerHTML = "";
+      headers.forEach(header => {
+        if (!excluded.includes(header)) {
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.value = header;
+          checkbox.checked = true;
+          label.appendChild(checkbox);
+          label.append(" " + header);
+          checkboxesDiv.appendChild(label);
+          checkboxesDiv.appendChild(document.createElement("br"));
+        }
+      });
+      document.getElementById("aggregationOptions").classList.remove("hidden");
+    }
+
+    // Helper: Convert date from MM/DD/YYYY to YYYY-MM-DD.
+    function parseDate(dateStr) {
+      if (!dateStr) return "Invalid Date";
+      const parts = dateStr.split("/");
+      if (parts.length === 3) {
+        let [month, day, year] = parts;
+        if (month.length < 2) month = "0" + month;
+        if (day.length < 2) day = "0" + day;
+        //return `${year}-${month}-${day}`;
+        return `${day}-${month}-${year}`;
+      }
+      return dateStr;
+    }
+
+    // When "Generate Report" is clicked.
+    document.getElementById("generateReportBtn").addEventListener("click", function() {
+      const selectedColumns = [];
+      const checkboxes = document.querySelectorAll("#checkboxes input[type='checkbox']");
+      checkboxes.forEach(chk => {
+        if (chk.checked) {
+          selectedColumns.push(chk.value);
+        }
+      });
+      if (selectedColumns.length === 0) {
+        alert("Please select at least one column for aggregation.");
+        return;
+      }
+	  
+	  const orderedColumns = reorderColumns(selectedColumns);
+	  generateSummaryReport(orderedColumns);
+	  generateDetailedReport(orderedColumns);
+	  generateMissingRcReport();
+	  generateExtraRcReport(); 
+      //generateSummaryReport(selectedColumns);
+      //generateDetailedReport(selectedColumns);
+	  //generateMissingRcReport();
+    });
+	
+	function generateExtraRcReport() {
+
+  const referenceSet = new Set();
+
+  referenceData.forEach(row => {
+    if (row["RcNo"] !== undefined && row["RcNo"] !== null) {
+      referenceSet.add(row["RcNo"].toString());
+    }
+  });
+
+  const extraByScheme = {};
+
+  csvData.forEach(row => {
+
+    const rc = row["RcNo"];
+    const scheme = row["Scheme"];
+
+    if (rc !== undefined && rc !== null) {
+
+      if (!referenceSet.has(rc.toString())) {
+
+        if (!extraByScheme[scheme]) {
+          extraByScheme[scheme] = [];
+        }
+
+        extraByScheme[scheme].push(rc);
+
+      }
+
+    }
+
+  });
+
+  const container = document.getElementById("extraRcTable");
+
+  container.innerHTML = "";
+
+  const schemes = Object.keys(extraByScheme).sort();
+
+  if (schemes.length === 0) {
+    container.innerHTML = "<p>No extra RcNo found.</p>";
+    return;
+  }
+
+  schemes.forEach(scheme => {
+
+    const title = document.createElement("h3");
+    title.textContent = "Scheme : " + scheme;
+    container.appendChild(title);
+
+    const table = document.createElement("table");
+
+    const thead = document.createElement("thead");
+
+    const headerRow = document.createElement("tr");
+
+    ["S.No","RcNo"].forEach(col => {
+
+      const th = document.createElement("th");
+      th.textContent = col;
+      headerRow.appendChild(th);
+
+    });
+
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+
+    const rcList = extraByScheme[scheme].sort();
+
+    let serial = 0;
+
+    rcList.forEach(rc => {
+
+      serial++;
+
+      const tr = document.createElement("tr");
+
+      const td1 = document.createElement("td");
+      td1.textContent = serial;
+
+      const td2 = document.createElement("td");
+      td2.textContent = rc;
+
+      tr.appendChild(td1);
+      tr.appendChild(td2);
+
+      tbody.appendChild(tr);
+
+    });
+
+    table.appendChild(tbody);
+
+    container.appendChild(table);
+
+  });
+
+}
+
+    // Report 1: Generate Scheme-wise Daily Sales Summary.
+    function generateSummaryReport(selectedColumns) {
+      const aggregated = {}; // Key: "Scheme_SaleDate"
+      csvData.forEach(row => {
+        const scheme = row["Scheme"];
+        const rawSaleDate = row["SaleDate"];
+        const saleDate = rawSaleDate ? parseDate(rawSaleDate.toString()) : "Invalid Date";
+        const key = scheme + "_" + saleDate;
+        if (!aggregated[key]) {
+          aggregated[key] = {
+            Scheme: scheme,
+            SaleDate: saleDate,
+            RcNoSet: new Set()  // For counting unique customers.
+          };
+          selectedColumns.forEach(col => {
+            aggregated[key][col] = 0;
+          });
+        }
+        if (row["RcNo"] !== undefined) {
+          aggregated[key].RcNoSet.add(row["RcNo"]);
+        }
+        selectedColumns.forEach(col => {
+          const val = parseFloat(row[col]) || 0;
+          aggregated[key][col] += val;
+        });
+      });
+
+      // Convert aggregated data to an array and add customer count.
+      const reportData = [];
+      for (const key in aggregated) {
+        const entry = aggregated[key];
+        entry.CustomerCount = entry.RcNoSet.size;
+        delete entry.RcNoSet;
+        reportData.push(entry);
+      }
+
+      // Group by Scheme.
+      const grouped = {};
+      reportData.forEach(entry => {
+        const scheme = entry.Scheme;
+        if (!grouped[scheme]) {
+          grouped[scheme] = [];
+        }
+        grouped[scheme].push(entry);
+      });
+
+      // Sort schemes alphabetically
+      const sortedSchemes = Object.keys(grouped).sort();  // This sorts the scheme names in ascending order.
+
+
+      // Build the summary table.
+      const reportTableDiv = document.getElementById("reportTable");
+      reportTableDiv.innerHTML = "";
+      const table = document.createElement("table");
+
+      // Table header: Scheme, SaleDate, CustomerCount, then selected columns.
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      const columns = ["Scheme", "SaleDate", "CustomerCount"].concat(selectedColumns);
+      columns.forEach(col => {
+        const th = document.createElement("th");
+        th.textContent = col;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      // Iterate through the sorted schemes and display the data
+sortedSchemes.forEach(scheme => {
+  const rows = grouped[scheme].sort((a, b) => a.SaleDate.localeCompare(b.SaleDate));
+
+  // Totals per scheme.
+  let groupTotalCustomer = 0;
+  const groupTotals = {};
+  selectedColumns.forEach(col => { groupTotals[col] = 0; });
+
+  rows.forEach(entry => {
+    const tr = document.createElement("tr");
+    columns.forEach(col => {
+      const td = document.createElement("td");
+      td.textContent = entry[col] !== undefined ? entry[col] : "";
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+    groupTotalCustomer += entry.CustomerCount;
+    selectedColumns.forEach(col => {
+      groupTotals[col] += entry[col];
+    });
+  });
+
+  // Summary row for the scheme.
+  const summaryRow = document.createElement("tr");
+  summaryRow.style.fontWeight = "bold";
+  const tdScheme = document.createElement("td");
+  tdScheme.textContent = `Total (${scheme})`;
+  summaryRow.appendChild(tdScheme);
+  const tdSaleDate = document.createElement("td");
+  tdSaleDate.textContent = "";
+  summaryRow.appendChild(tdSaleDate);
+  const tdCustomer = document.createElement("td");
+  tdCustomer.textContent = groupTotalCustomer;
+  summaryRow.appendChild(tdCustomer);
+  selectedColumns.forEach(col => {
+    const td = document.createElement("td");
+    td.textContent = groupTotals[col];
+    summaryRow.appendChild(td);
+  });
+  tbody.appendChild(summaryRow);
+});
+
+      table.appendChild(tbody);
+      reportTableDiv.appendChild(table);
+    }
+
+    // Report 2: Generate Detailed Report – one table per scheme.
+    // Each table will have columns: S.No, SaleDate, RcNo, and the selected columns.
+    // For each sale date group, the serial number resets to 1 and a total row is added.
+    function generateDetailedReport(selectedColumns) {
+      // Build nested structure: detailedData[scheme][saleDate][rcNo] = { col: value, ... }
+      const detailedData = {};
+      csvData.forEach(row => {
+        const scheme = row["Scheme"];
+        const rawSaleDate = row["SaleDate"];
+        const saleDate = rawSaleDate ? parseDate(rawSaleDate.toString()) : "Invalid Date";
+        const rcNo = row["RcNo"];
+        if (!detailedData[scheme]) {
+          detailedData[scheme] = {};
+        }
+        if (!detailedData[scheme][saleDate]) {
+          detailedData[scheme][saleDate] = {};
+        }
+        if (!detailedData[scheme][saleDate][rcNo]) {
+          detailedData[scheme][saleDate][rcNo] = {};
+          selectedColumns.forEach(col => {
+            detailedData[scheme][saleDate][rcNo][col] = 0;
+          });
+        }
+        selectedColumns.forEach(col => {
+          const val = parseFloat(row[col]) || 0;
+          detailedData[scheme][saleDate][rcNo][col] += val;
+        });
+      });
+
+      const container = document.getElementById("detailedReportTable");
+      container.innerHTML = "";
+
+      // For each Scheme, create one table.
+      for (const scheme in detailedData) {
+        const schemeHeader = document.createElement("h3");
+        schemeHeader.textContent = "Scheme: " + scheme;
+        container.appendChild(schemeHeader);
+
+        // Create table header.
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        // Columns: S.No, SaleDate, RcNo, then selected columns.
+        const headerCols = ["S.No", "SaleDate", "RcNo"].concat(selectedColumns);
+        headerCols.forEach(col => {
+          const th = document.createElement("th");
+          th.textContent = col;
+          headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+
+        // Get all sale dates for the scheme in sorted order.
+        const saleDates = Object.keys(detailedData[scheme]).sort((a, b) => a.localeCompare(b));
+        saleDates.forEach(saleDate => {
+          const records = detailedData[scheme][saleDate];
+          // Sort RcNo keys.
+          const rcNos = Object.keys(records).sort((a, b) => a.localeCompare(b));
+          let serial = 0;
+          // Initialize daily totals for selected columns.
+          const dailyTotals = {};
+          selectedColumns.forEach(col => { dailyTotals[col] = 0; });
+
+          rcNos.forEach(rcNo => {
+            serial++;
+            const tr = document.createElement("tr");
+            // S.No cell.
+            const tdSerial = document.createElement("td");
+            tdSerial.textContent = serial;
+            tr.appendChild(tdSerial);
+            // SaleDate cell.
+            const tdDate = document.createElement("td");
+            tdDate.textContent = saleDate;
+            tr.appendChild(tdDate);
+            // RcNo cell.
+            const tdRcNo = document.createElement("td");
+            tdRcNo.textContent = rcNo;
+            tr.appendChild(tdRcNo);
+            // Selected columns.
+            selectedColumns.forEach(col => {
+              const td = document.createElement("td");
+              const val = records[rcNo][col];
+              td.textContent = val;
+              tr.appendChild(td);
+              dailyTotals[col] += val;
+            });
+            tbody.appendChild(tr);
+          });
+
+          // Add a total row for this saleDate group.
+          const totalRow = document.createElement("tr");
+          totalRow.style.fontWeight = "bold";
+          // S.No cell as "Total"
+          const tdTotalLabel = document.createElement("td");
+          tdTotalLabel.textContent = "Total";
+          totalRow.appendChild(tdTotalLabel);
+          // SaleDate cell with saleDate.
+          const tdTotalDate = document.createElement("td");
+          tdTotalDate.textContent = saleDate;
+          totalRow.appendChild(tdTotalDate);
+          // RcNo cell empty.
+          const tdEmpty = document.createElement("td");
+          tdEmpty.textContent = "";
+          totalRow.appendChild(tdEmpty);
+          // Totals for each selected column.
+          selectedColumns.forEach(col => {
+            const tdTotal = document.createElement("td");
+            tdTotal.textContent = dailyTotals[col];
+            totalRow.appendChild(tdTotal);
+          });
+          tbody.appendChild(totalRow);
+        });
+
+        table.appendChild(tbody);
+        container.appendChild(table);
+      }
+    }
+	
+	function generateMissingRcReport() {
+
+  const salesRcSet = new Set();
+
+  csvData.forEach(row => {
+    if (row["RcNo"] !== undefined && row["RcNo"] !== null) {
+      salesRcSet.add(row["RcNo"].toString());
+    }
+  });
+
+  const missingByScheme = {};
+
+  referenceData.forEach(row => {
+
+    const rc = row["RcNo"];
+    const scheme = row["Scheme"];
+
+    if (rc !== undefined && rc !== null) {
+
+      if (!salesRcSet.has(rc.toString())) {
+
+        if (!missingByScheme[scheme]) {
+          missingByScheme[scheme] = [];
+        }
+
+        missingByScheme[scheme].push(rc);
+
+      }
+
+    }
+
+  });
+
+  const container = document.getElementById("missingRcTable");
+
+  container.innerHTML = "";
+
+  const schemes = Object.keys(missingByScheme).sort();
+
+  if (schemes.length === 0) {
+    container.innerHTML = "<p>No missing RcNo found.</p>";
+    return;
+  }
+
+  schemes.forEach(scheme => {
+
+    const title = document.createElement("h3");
+    title.textContent = "Scheme : " + scheme;
+    container.appendChild(title);
+
+    const table = document.createElement("table");
+
+    const thead = document.createElement("thead");
+
+    const headerRow = document.createElement("tr");
+
+    ["S.No","RcNo"].forEach(col => {
+
+      const th = document.createElement("th");
+      th.textContent = col;
+      headerRow.appendChild(th);
+
+    });
+
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+
+    const rcList = missingByScheme[scheme].sort();
+
+    let serial = 0;
+
+    rcList.forEach(rc => {
+
+      serial++;
+
+      const tr = document.createElement("tr");
+
+      const td1 = document.createElement("td");
+      td1.textContent = serial;
+
+      const td2 = document.createElement("td");
+      td2.textContent = rc;
+
+      tr.appendChild(td1);
+      tr.appendChild(td2);
+
+      tbody.appendChild(tr);
+
+    });
+
+    table.appendChild(tbody);
+
+    container.appendChild(table);
+
+  });
+
+}
+
+function reorderColumns(columns) {
+
+  const ordered = [];
+
+  // Always try to put Wheat first
+  if (columns.includes("Wheat")) {
+    ordered.push("Wheat");
+  }
+
+  // Then Rice
+  if (columns.includes("Rice")) {
+    ordered.push("Rice");
+  }
+
+  // Then remaining columns
+  columns.forEach(col => {
+    if (col !== "Wheat" && col !== "Rice") {
+      ordered.push(col);
+    }
+  });
+
+  return ordered;
+}
+	
+</script>
+</body>
+</html>
