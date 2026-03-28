@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MHTML to CSV Converter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f5f7fa;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #fafafa;
+            cursor: pointer;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 15px;
+            padding: 12px;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #219150;
+        }
+
+        #status {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        .info {
+            font-size: 13px;
+            color: #777;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <h2>📄 MHTML to CSV Converter</h2>
+
+    <input type="file" id="fileInput" accept=".mhtml,.html">
+
+    <button onclick="processFile()">Convert to CSV</button>
+
+    <p id="status"></p>
+
+    <div class="info">
+        Upload downloaded page (.mhtml) from govt site
+    </div>
+</div>
+
+<script>
+function processFile() {
+    const file = document.getElementById("fileInput").files[0];
+
+    if (!file) {
+        alert("Please select file");
+        return;
+    }
+
+    document.getElementById("status").innerText = "Processing... ⏳";
+
+    const reader = new FileReader();
+
+    reader.onload = function(e) {
+        const content = e.target.result;
+
+        const htmlMatch = content.match(/<html[\s\S]*<\/html>/i);
+
+        if (!htmlMatch) {
+            alert("HTML not found in file");
+            return;
+        }
+
+        const html = htmlMatch[0];
+
+        processHTML(html);
+    };
+
+    reader.readAsText(file);
+}
+
+function processHTML(html) {
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    let tables = [...doc.querySelectorAll("table")];
+
+    doc.querySelectorAll("iframe").forEach(frame => {
+        try {
+            tables = tables.concat([...frame.contentDocument.querySelectorAll("table")]);
+        } catch (e) {}
+    });
+
+    if (tables.length === 0) {
+        alert("No tables found");
+        return;
+    }
+
+    let table = tables.find(t => t.id === "Report") 
+        || tables.sort((a, b) => b.rows.length - a.rows.length)[0];
+
+    if (!table) {
+        alert("Table not found");
+        return;
+    }
+
+    let csv = [];
+
+    let headerRows = table.querySelectorAll("thead tr");
+
+    if (headerRows.length < 3) {
+        alert("Header structure not supported");
+        return;
+    }
+
+    let mainHeader = headerRows[1];
+    let subHeader = headerRows[2];
+
+    let headers = [];
+
+    headers.push("Sl No");
+    headers.push("SRC No");
+    headers.push("Scheme");
+    headers.push("Avail Type");
+    headers.push("Receipt No");
+    headers.push("Date");
+
+    [...subHeader.cells].forEach(cell => {
+        headers.push(cell.innerText.replace(/\n/g, " ").trim());
+    });
+
+    csv.push(headers.map(h => `"${h}"`).join(","));
+
+    let bodyRows = table.querySelectorAll("tbody tr");
+
+    bodyRows.forEach(row => {
+        let cells = [...row.cells];
+        let data = [];
+
+        for (let i = 0; i < 6; i++) {
+            data.push(`"${cells[i]?.innerText.trim() || ""}"`);
+        }
+
+        for (let i = 6; i <= 10; i++) {
+            data.push(`"${cells[i]?.innerText.trim() || ""}"`);
+        }
+
+        csv.push(data.join(","));
+    });
+
+    document.getElementById("status").innerText = "✅ CSV Generated";
+
+    downloadCSV(csv.join("\n"));
+}
+
+function downloadCSV(content) {
+    const blob = new Blob([content], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "clean_export.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+</script>
+
+</body>
+</html>
