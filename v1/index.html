@@ -224,8 +224,29 @@ SrcNo,RcNo,Scheme,Type,ReceiptNo,SaleDate,Wheat,Shidha,Saree,Jowar,Rice
           header: true,
           dynamicTyping: true,
           complete: function(results) {
-            csvData = results.data;
-            headers = results.meta.fields;
+            //csvData = results.data;
+			//csvData = results.data.map(row => normalizeRow(row));
+			//headers = Object.keys(csvData[0] || {}); 
+            //headers = results.meta.fields;
+			
+			csvData = results.data.map(row => {
+
+  const cleanedRow = {};
+
+  Object.keys(row).forEach(key => {
+
+    const cleanKey = key.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+
+    cleanedRow[cleanKey] = row[key];
+
+  });
+
+  return normalizeRow(cleanedRow);
+
+});
+
+headers = Object.keys(csvData[0] || {});
+			
             showAggregationOptions();
           },
           error: function(error) {
@@ -765,6 +786,95 @@ function reorderColumns(columns) {
   });
 
   return ordered;
+}
+
+
+function normalizeRow(row) {
+
+  // Normalize keys (basic cleaning only)
+  const cleaned = {};
+  Object.keys(row).forEach(key => {
+    const cleanKey = key.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    cleaned[cleanKey] = row[key];
+  });
+
+  // Fixed fields
+  const fixed = {
+    SrcNo: cleaned["Sl No"],
+    RcNo: cleaned["SRC No"],
+    Scheme: cleaned["Scheme"],
+    Type: cleaned["Avail Type"],
+    ReceiptNo: cleaned["Receipt No"],
+    SaleDate: convertDate(cleaned["Date"])
+  };
+
+  // Dynamic fields (everything else)
+  const dynamic = {};
+
+  Object.keys(cleaned).forEach(key => {
+
+    // Skip fixed columns
+    if (
+      key === "Sl No" ||
+      key === "SRC No" ||
+      key === "Scheme" ||
+      key === "Avail Type" ||
+      key === "Receipt No" ||
+      key === "Date"
+    ) return;
+
+    // Normalize dynamic column name
+    let normalizedKey = key
+      .replace(/\(.*?\)/g, "")   // remove (Kgs)
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .trim();
+
+    // Handle FRice → Rice
+    if (normalizedKey.toLowerCase() === "frice") {
+      normalizedKey = "Rice";
+    }
+
+    dynamic[normalizedKey] = row[key];
+  });
+
+  return {
+    ...fixed,
+    ...dynamic
+  };
+}
+
+
+function convertDate(dateStr) {
+  if (!dateStr) return "";
+
+  // Example: 2026-03-28 07:31
+  const parts = dateStr.split(" ")[0].split("-");
+
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    return `${month}/${day}/${year}`; // MM/DD/YYYY
+  }
+
+  return dateStr;
+}
+
+function normalizeKey(key) {
+  return key
+    .toLowerCase()
+    .replace(/\(.*?\)/g, "")   // remove (Kgs)
+    .replace(/[^a-z0-9]/g, "") // remove spaces, symbols
+    .trim();
+}
+
+function buildKeyMap(row) {
+  const map = {};
+
+  Object.keys(row).forEach(key => {
+    const normalized = normalizeKey(key);
+    map[normalized] = key;
+  });
+
+  return map;
 }
 	
 </script>
