@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Ration Shop Sales Aggregator Default</title>
+    <title>Ration Shop Sales Aggregator</title>
     <!-- Using PapaParse for CSV parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
@@ -162,15 +162,19 @@ button:hover {
 <div class="container">
     <!-- Static controls: will not be printed -->
     <div class="no-print section">
-        <h1>Ration Shop Sales Aggregator Default</h1>
-        <p>Upload your CSV file (sample format below):</p>
+        <h1>Ration Shop Sales Aggregator</h1>
+		
+		<p>Upload Govt MHTML file:</p>
+		<input type="file" id="mhtmlInput" accept=".mhtml,.html">
+		
+<!--        <p>Upload your CSV file (sample format below):</p>
         <pre>
 SrcNo,RcNo,Scheme,Type,ReceiptNo,SaleDate,Wheat,Shidha,Saree,Jowar,Rice
 1,272030600735,PHH,OTP,1.96102911215363E+018,01/29/2025,2,0,0,2,6
 2,272020216974,PHH,OTP,1.96102908625227E+018,01/29/2025,3,0,0,3,9
 4,272020216985,AAY,OTP,1.96102939348871E+018,01/29/2025,8,0,0,8,19
       </pre>
-	    <input type="file" id="csvFileInput" accept=".csv">
+	    <input type="file" id="csvFileInput" accept=".csv">  -->
 
 		<p>Upload RcNo Master data CSV (RcNo,Scheme):</p>
 		<input type="file" id="referenceCsvInput" accept=".csv">
@@ -216,25 +220,7 @@ SrcNo,RcNo,Scheme,Type,ReceiptNo,SaleDate,Wheat,Shidha,Saree,Jowar,Rice
     let headers = [];
 	let referenceData = [];
 
-    // Parse CSV file when uploaded.
-    document.getElementById("csvFileInput").addEventListener("change", function(e) {
-      const file = e.target.files[0];
-      if (file) {
-        Papa.parse(file, {
-          header: true,
-          dynamicTyping: true,
-          complete: function(results) {
-            csvData = results.data;
-            headers = results.meta.fields;
-            showAggregationOptions();
-          },
-          error: function(error) {
-            alert("Error parsing CSV: " + error);
-          }
-        });
-      }
-    });
-	
+    
 	document.getElementById("referenceCsvInput").addEventListener("change", function(e) {
 		const file = e.target.files[0];
 
@@ -766,7 +752,187 @@ function reorderColumns(columns) {
 
   return ordered;
 }
+
+
+function normalizeRow(row) {
+
+  // Normalize keys (basic cleaning only)
+  const cleaned = {};
+  Object.keys(row).forEach(key => {
+    const cleanKey = key.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    cleaned[cleanKey] = row[key];
+  });
+
+  // Fixed fields
+  const fixed = {
+    SrcNo: cleaned["Sl No"],
+    RcNo: cleaned["SRC No"],
+    Scheme: cleaned["Scheme"],
+    Type: cleaned["Avail Type"],
+    ReceiptNo: cleaned["Receipt No"],
+    SaleDate: convertDate(cleaned["Date"])
+  };
+
+  // Dynamic fields (everything else)
+  const dynamic = {};
+
+  Object.keys(cleaned).forEach(key => {
+
+    // Skip fixed columns
+    if (
+      key === "Sl No" ||
+      key === "SRC No" ||
+      key === "Scheme" ||
+      key === "Avail Type" ||
+      key === "Receipt No" ||
+      key === "Date"
+    ) return;
+
+    // Normalize dynamic column name
+    let normalizedKey = key
+      .replace(/\(.*?\)/g, "")   // remove (Kgs)
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .trim();
+
+    // Handle FRice → Rice
+    if (normalizedKey.toLowerCase() === "frice") {
+      normalizedKey = "Rice";
+    }
+
+    dynamic[normalizedKey] = row[key];
+  });
+
+  return {
+    ...fixed,
+    ...dynamic
+  };
+}
+
+
+function convertDate(dateStr) {
+  if (!dateStr) return "";
+
+  // Example: 2026-03-28 07:31
+  const parts = dateStr.split(" ")[0].split("-");
+
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    return `${month}/${day}/${year}`; // MM/DD/YYYY
+  }
+
+  return dateStr;
+}
+
+function normalizeKey(key) {
+  return key
+    .toLowerCase()
+    .replace(/\(.*?\)/g, "")   // remove (Kgs)
+    .replace(/[^a-z0-9]/g, "") // remove spaces, symbols
+    .trim();
+}
+
+function buildKeyMap(row) {
+  const map = {};
+
+  Object.keys(row).forEach(key => {
+    const normalized = normalizeKey(key);
+    map[normalized] = key;
+  });
+
+  return map;
+}
 	
+document.getElementById("mhtmlInput").addEventListener("change", function(e) {
+  const file = e.target.files[0];
+
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    const content = e.target.result;
+
+    const htmlMatch = content.match(/<html[\s\S]*<\/html>/i);
+
+    if (!htmlMatch) {
+      alert("HTML not found in file");
+      return;
+    }
+
+    processMHTML(htmlMatch[0]);
+  };
+
+  reader.readAsText(file);
+});
+
+
+function processMHTML(html) {
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+
+  let tables = [...doc.querySelectorAll("table")];
+
+  if (tables.length === 0) {
+    alert("No tables found");
+    return;
+  }
+
+  let table = tables.find(t => t.id === "Report") 
+    || tables.sort((a, b) => b.rows.length - a.rows.length)[0];
+
+  if (!table) {
+    alert("Table not found");
+    return;
+  }
+
+  let headerRows = table.querySelectorAll("thead tr");
+
+  if (headerRows.length < 3) {
+    alert("Header structure not supported");
+    return;
+  }
+
+  let subHeader = headerRows[2];
+
+  let headersList = [
+    "Sl No",
+    "SRC No",
+    "Scheme",
+    "Avail Type",
+    "Receipt No",
+    "Date"
+  ];
+
+  [...subHeader.cells].forEach(cell => {
+    headersList.push(cell.innerText.replace(/\n/g, " ").trim());
+  });
+
+  // Convert to SAME STRUCTURE as CSV input
+  const extracted = [];
+
+  table.querySelectorAll("tbody tr").forEach(row => {
+    let cells = [...row.cells];
+    let obj = {};
+
+    headersList.forEach((h, i) => {
+	  obj[h] = (cells[i] && cells[i].innerText) ? cells[i].innerText.trim() : "";
+    });
+
+    extracted.push(obj);
+  });
+  
+  if (extracted.length === 0) {
+	alert("No data rows found");
+	return;
+}
+
+  // SAME PIPELINE (NO CHANGE)
+  csvData = extracted.map(row => normalizeRow(row));
+  headers = Object.keys(csvData[0] || {});
+
+  showAggregationOptions();
+}
 </script>
 </body>
 </html>
