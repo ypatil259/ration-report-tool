@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Ration Shop Sales Aggregator</title>
+    <title>Ration Shop Sales Aggregator Default</title>
     <!-- Using PapaParse for CSV parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
@@ -224,29 +224,8 @@ SrcNo,RcNo,Scheme,Type,ReceiptNo,SaleDate,Wheat,Shidha,Saree,Jowar,Rice
           header: true,
           dynamicTyping: true,
           complete: function(results) {
-            //csvData = results.data;
-			//csvData = results.data.map(row => normalizeRow(row));
-			//headers = Object.keys(csvData[0] || {}); 
-            //headers = results.meta.fields;
-			
-			csvData = results.data.map(row => {
-
-  const cleanedRow = {};
-
-  Object.keys(row).forEach(key => {
-
-    const cleanKey = key.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-
-    cleanedRow[cleanKey] = row[key];
-
-  });
-
-  return normalizeRow(cleanedRow);
-
-});
-
-headers = Object.keys(csvData[0] || {});
-			
+            csvData = results.data;
+            headers = results.meta.fields;
             showAggregationOptions();
           },
           error: function(error) {
@@ -786,36 +765,6 @@ function reorderColumns(columns) {
   });
 
   return ordered;
-}
-
-function normalizeRow(row) {
-  return {
-    SrcNo: row["Sl No"],
-    RcNo: row["SRC No"],
-    Scheme: row["Scheme"],
-    Type: row["Avail Type"],
-    ReceiptNo: row["Receipt No"],
-    SaleDate: convertDate(row["Date"]),
-    Wheat: row["Wheat (Kgs)"] || row["Wheat"],
-    Sugar: row["Sugar (Kgs)"] || row["Sugar"],
-    Maize: row["Maize (Kgs)"] || row["Maize"],
-    Jowar: row["Jowar (Kgs)"] || row["Jowar"],
-    Rice: row["FRice (Kgs)"] || row["Rice"]
-  };
-}
-
-function convertDate(dateStr) {
-  if (!dateStr) return "";
-
-  // Example: 2026-03-28 07:31
-  const parts = dateStr.split(" ")[0].split("-");
-
-  if (parts.length === 3) {
-    const [year, month, day] = parts;
-    return `${month}/${day}/${year}`; // MM/DD/YYYY
-  }
-
-  return dateStr;
 }
 	
 </script>
