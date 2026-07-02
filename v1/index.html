@@ -176,10 +176,29 @@ SrcNo,RcNo,Scheme,Type,ReceiptNo,SaleDate,Wheat,Shidha,Saree,Jowar,Rice
 		<input type="file" id="referenceCsvInput" accept=".csv">
         <!-- Section: Select columns for aggregation -->
         <div id="aggregationOptions" class="hidden section">
-            <h3>Select columns for aggregation (sum):</h3>
-            <div id="checkboxes"></div>
-            <button id="generateReportBtn">Generate Report</button>
-        </div>
+
+    <h3>Select columns for aggregation (sum):</h3>
+
+    <div id="checkboxes"></div>
+
+    <hr>
+
+    <h3>Select Transaction Dates</h3>
+
+    <label>
+        <input type="checkbox" id="selectAllDates" checked>
+        Select All
+    </label>
+
+    <br><br>
+
+    <div id="dateCheckboxes"></div>
+
+    <br>
+
+    <button id="generateReportBtn">Generate Report</button>
+
+</div>
     </div>
 
     <!-- Report Header Section: This will print -->
@@ -212,9 +231,10 @@ SrcNo,RcNo,Scheme,Type,ReceiptNo,SaleDate,Wheat,Shidha,Saree,Jowar,Rice
 </div>
 
 <script>
-    let csvData = [];
-    let headers = [];
-	let referenceData = [];
+	let csvData = [];
+let filteredCsvData = [];
+let headers = [];
+let referenceData = [];
 
     // Parse CSV file when uploaded.
     document.getElementById("csvFileInput").addEventListener("change", function(e) {
@@ -248,6 +268,7 @@ SrcNo,RcNo,Scheme,Type,ReceiptNo,SaleDate,Wheat,Shidha,Saree,Jowar,Rice
 headers = Object.keys(csvData[0] || {});
 			
             showAggregationOptions();
+			showDateOptions();
           },
           error: function(error) {
             alert("Error parsing CSV: " + error);
@@ -290,6 +311,64 @@ headers = Object.keys(csvData[0] || {});
       });
       document.getElementById("aggregationOptions").classList.remove("hidden");
     }
+	
+	function getFilteredData() {
+
+    const selectedDates = new Set();
+
+    document
+        .querySelectorAll("#dateCheckboxes input[type='checkbox']")
+        .forEach(chk => {
+
+            if(chk.checked){
+
+                selectedDates.add(chk.value);
+
+            }
+
+        });
+
+    return csvData.filter(r => selectedDates.has(r.SaleDate));
+
+}
+	
+	function showDateOptions() {
+
+    const container = document.getElementById("dateCheckboxes");
+
+    container.innerHTML = "";
+
+    const uniqueDates = [...new Set(csvData.map(r => r.SaleDate))]
+        .filter(Boolean)
+        .sort();
+
+    uniqueDates.forEach(date => {
+
+        const label = document.createElement("label");
+
+        const checkbox = document.createElement("input");
+
+        checkbox.type = "checkbox";
+        checkbox.checked = true;
+        checkbox.value = date;
+
+        label.appendChild(checkbox);
+        label.append(" " + parseDate(date));
+
+        container.appendChild(label);
+        container.appendChild(document.createElement("br"));
+
+    });
+
+    document.getElementById("selectAllDates").onchange = function(){
+
+        container
+            .querySelectorAll("input[type='checkbox']")
+            .forEach(c=>c.checked=this.checked);
+
+    };
+
+}
 
     // Helper: Convert date from MM/DD/YYYY to YYYY-MM-DD.
     function parseDate(dateStr) {
@@ -319,11 +398,14 @@ headers = Object.keys(csvData[0] || {});
         return;
       }
 	  
-	  const orderedColumns = reorderColumns(selectedColumns);
-	  generateSummaryReport(orderedColumns);
-	  generateDetailedReport(orderedColumns);
-	  generateMissingRcReport();
-	  generateExtraRcReport(); 
+	  filteredCsvData = getFilteredData();
+
+const orderedColumns = reorderColumns(selectedColumns);
+
+generateSummaryReport(orderedColumns);
+generateDetailedReport(orderedColumns);
+generateMissingRcReport();
+generateExtraRcReport();
       //generateSummaryReport(selectedColumns);
       //generateDetailedReport(selectedColumns);
 	  //generateMissingRcReport();
@@ -341,7 +423,7 @@ headers = Object.keys(csvData[0] || {});
 
   const extraByScheme = {};
 
-  csvData.forEach(row => {
+  filteredCsvData.forEach(row => {
 
     const rc = row["RcNo"];
     const scheme = row["Scheme"];
@@ -432,7 +514,7 @@ headers = Object.keys(csvData[0] || {});
     // Report 1: Generate Scheme-wise Daily Sales Summary.
     function generateSummaryReport(selectedColumns) {
       const aggregated = {}; // Key: "Scheme_SaleDate"
-      csvData.forEach(row => {
+      filteredCsvData.forEach(row => {
         const scheme = row["Scheme"];
         const rawSaleDate = row["SaleDate"];
         const saleDate = rawSaleDate ? parseDate(rawSaleDate.toString()) : "Invalid Date";
@@ -550,7 +632,7 @@ sortedSchemes.forEach(scheme => {
     function generateDetailedReport(selectedColumns) {
       // Build nested structure: detailedData[scheme][saleDate][rcNo] = { col: value, ... }
       const detailedData = {};
-      csvData.forEach(row => {
+      filteredCsvData.forEach(row => {
         const scheme = row["Scheme"];
         const rawSaleDate = row["SaleDate"];
         const saleDate = rawSaleDate ? parseDate(rawSaleDate.toString()) : "Invalid Date";
